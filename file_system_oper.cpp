@@ -8,8 +8,8 @@
 
 using namespace std;
 int main(int argc, const char ** argv){
-    args_reader::file_oper(argc,argv);
     try {
+        args_reader::file_oper(argc,argv);
     }
     catch (exception& e){
         cerr << e.what() << endl;

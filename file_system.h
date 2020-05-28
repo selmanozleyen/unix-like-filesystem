@@ -13,6 +13,8 @@
 
 /* WARNING: THIS WILL WORK ON MACHINES WHERE ONE CHAR IS A BYTE */
 
+#define RESET   "\033[0m"
+#define GREEN   "\033[32m"
 
 class data_block {
 public:
@@ -136,7 +138,7 @@ private:
     // Clears the temp blocks buffer
     void write_inode_blocks_buffer();
     void get_all_occupied_names_blocks(std::map<size_t,std::set<std::string>>& name_map,
-                                       std::map<size_t,std::set<size_t>>& blk_map);
+                                       std::map<size_t,std::vector<size_t>> &blk_map);
 
     //helper for read_file method
     void copy_system_file_to_buf(size_t iinode,char * buf,size_t size);
@@ -173,8 +175,9 @@ private:
 
     void get_all_free_blocks(std::vector<size_t>& res,size_t pos);
     void get_all_free_inodes(std::vector<size_t>& res,size_t * dir_count);
-    void load_occupied_inode_blocks(size_t index,std::set<size_t>& res);
-    void load_occupied_inode_blocks_helper(size_t index, std::set<size_t>& res,size_t address,size_t level);
+    void get_all_free_inodes_rec(std::vector<size_t>& res,size_t pos);
+    void load_occupied_inode_blocks(size_t index, std::vector<size_t> &res);
+    void load_occupied_inode_blocks_helper(size_t index, std::vector<size_t> &res, size_t address, size_t level);
 
     const char* filename = nullptr;
     superblock sb{};
@@ -185,11 +188,12 @@ private:
     static const size_t direct_count = 5;
     static const size_t write_buffer_size = 64;
     static const int max_file_size = 1 << 20;
-    static const size_t dir_type = 0;
-    static const size_t file_type = 1;
-    static const size_t sym_dir = 2;
-    static const size_t sym_file = 3;
     static const char months[][4];
+    static const size_t empty_type = 0;
+    static const size_t dir_type = 1;
+    static const size_t file_type = 2;
+    static const size_t sym_dir = 3;
+    static const size_t sym_file = 4;
     // System RAM simulation
     std::vector<inode> inodes;
     std::vector<data_block> inode_blocks;

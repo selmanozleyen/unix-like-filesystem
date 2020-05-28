@@ -153,7 +153,7 @@ void file_system::create_file(const char* filename_arg)  {
 
 void file_system::init_inode(size_t i) {
     set_inode_time(i);
-
+    inodes[i].type = empty_type;
     inodes[i].size = 0;
 
     inodes[i].link_count = 0;
@@ -381,7 +381,7 @@ void file_system::mkdir(const std::string& arg) {
     size_t parent;
     string name,path;
     // check the parameter
-    new_file_args(arg, path, name, parent, false);
+    new_file_args(arg, path, name, parent);
     //get free inode
     uint16_t newi = get_free_inode();
     init_inode(newi);
@@ -396,7 +396,6 @@ void file_system::mkdir(const std::string& arg) {
     add_inode_size(parent,data_block::dir_entry_size);
     write_inode(newi);
     write_inode(parent);
-
 }
 
 void file_system::write(uint16_t inode_index, uint32_t pos, uint32_t size,const char* buf)
@@ -618,7 +617,9 @@ void file_system::put_free_inode(uint16_t index)
     }
     temp_blocks.pop_back();
     sb.free_inode_count++;
+    clear_inode(index);
     write_superblock();
+    write_inode(index);
 }
 
 uint16_t file_system::get_free_block()
@@ -727,7 +728,7 @@ void file_system::dumpe2fs()  {
     // sb.block size
     map<size_t,set<string>> nm;
     // inode and the blocks it occupies
-    map<size_t,set<size_t >> blk_map;
+    map<size_t,vector<size_t>> blk_map;
     get_all_occupied_names_blocks(nm,blk_map);
     // getting all free blocks
     vector<size_t> fblocks;
@@ -737,10 +738,13 @@ void file_system::dumpe2fs()  {
     size_t dir_count = 0;
     get_all_free_inodes(finodes,&dir_count);
 
-    cout << "Block Count: " << block_count << endl;
-    cout << "Inode Count: " << sb.inode_count << endl;
-    cout << "Free Block Count: " << sb.fb_count  << endl;
-    cout << "Free Inode Count: " << sb.free_inode_count  << endl;
+    cout << GREEN << "Block Count: " << RESET << block_count << endl;
+    cout << GREEN << "Inode Count: " << RESET << sb.inode_count << endl;
+    cout << GREEN << "Free Block Count: " << RESET << sb.fb_count  << endl;
+    cout << GREEN << "Free Inode Count: " << RESET << sb.free_inode_count  << endl;
+    cout << GREEN "Number Of Files: " RESET<< blk_map.size() - dir_count << endl;
+    cout << GREEN "Number Of Directories: " RESET<< dir_count << endl;
+    cout << GREEN "Block Size (KB): " RESET<< sb.block_size << endl;
     size_t j = 0;
     cout << "Free Blocks: " << " (" <<fblocks.size() << "): ";
     for(auto i: fblocks){
@@ -763,12 +767,9 @@ void file_system::dumpe2fs()  {
         }
     }
     cout << endl;
-    cout << "Number Of Files: "<< blk_map.size() - dir_count << endl;
-    cout << "Number Of Directories: "<< dir_count << endl;
-    cout << "Block Size (KB): " << sb.block_size << endl;
-    cout << "Occupied Inodes List: " << endl;
+    cout << GREEN "Occupied Inodes List: " RESET<< endl;
     for(auto& in : blk_map){
-        cout << "-----------------------------" << endl;
+        cout << GREEN"-----------------------------" RESET << endl;
         cout << "Inode: " << in.first << endl;
         cout << "Occupied Blocks: ";
         j = 0;
@@ -790,12 +791,13 @@ void file_system::dumpe2fs()  {
             }
         }
         cout << endl;
-        cout << "-----------------------------" << endl;
+        cout <<GREEN "-----------------------------" RESET<< endl;
     }
 
 }
 
-void file_system::get_all_occupied_names_blocks(map<size_t,set<string>>& name_map,map<size_t,set<size_t>>& blk_map)  {
+void file_system::get_all_occupied_names_blocks(map<size_t, set<string>> &name_map,
+                                                map<size_t, vector<size_t>> &blk_map)  {
     // listing all occupied inodes
     vector<size_t> all_dirs;
     for (size_t i = 0; i < inodes.size(); ++i) {
@@ -803,7 +805,7 @@ void file_system::get_all_occupied_names_blocks(map<size_t,set<string>>& name_ma
             if(inodes[i].type == file_system::dir_type)
                 all_dirs.push_back(i);
             name_map[i]  = set<string>();
-            blk_map[i] = set<size_t>();
+            blk_map[i] = vector<size_t>();
         }
     }
     for (auto& dir: all_dirs){
@@ -853,18 +855,18 @@ void file_system::get_all_free_blocks(std::vector<size_t> &res, size_t pos) {
 
 void file_system::get_all_free_inodes(std::vector<size_t> &res,size_t * dir_count) {
     for (size_t i = 0; i < inodes.size(); ++i) {
-        if (inodes[i].year == 0)
+        if (inodes[i].type == empty_type)
             res.push_back(i);
-        else if(inodes[i].link_count == 0)
+        else if(inodes[i].type == dir_type || inodes[i].type == sym_dir)
             ++(*dir_count);
     }
 }
 
-void file_system::load_occupied_inode_blocks(size_t index, std::set<size_t> &res) {
+void file_system::load_occupied_inode_blocks(size_t index, vector<size_t> &res) {
     inode in = inodes[index];
     for (uint16_t i : in.ba) {
         if(i != 0)
-            res.insert(i);
+            res.push_back(i);
         else
             return;
     }
@@ -873,11 +875,11 @@ void file_system::load_occupied_inode_blocks(size_t index, std::set<size_t> &res
     load_occupied_inode_blocks_helper(index,res,in.ti,3);
 }
 
-void file_system::load_occupied_inode_blocks_helper(size_t index, std::set<size_t> &res, size_t address, size_t level) {
+void file_system::load_occupied_inode_blocks_helper(size_t index, vector<size_t> &res, size_t address, size_t level) {
     if(address == 0)
         return;
     if(level == 0){
-        res.insert(address);
+        res.push_back(address);
     }
     else{
         load_by_block_no(address);
@@ -938,6 +940,7 @@ test2(int argc,const char ** argv) {
     fs4->list_folders("/");
     fs4->del("/l2");
     fs4->list_folders("/");
+    fs4->fsck();
     delete fs4;
 
 }
@@ -1159,9 +1162,10 @@ void file_system::remove_dir_entry(size_t iindex, const std::string &name) {
 }
 
 void file_system::empty_inode_blocks(size_t iindex) {
-    set<size_t> blocks;
+    vector<size_t> blocks;
     load_occupied_inode_blocks(iindex,blocks);
-    for(auto bno: blocks)
+    vector<size_t> block_set(blocks);
+    for(auto bno: block_set)
         put_free_block(bno);
     for(auto& ba: inodes[iindex].ba)
         ba = 0;
@@ -1173,11 +1177,10 @@ void file_system::empty_inode_blocks(size_t iindex) {
 void file_system::clear_inode(size_t index) {
     empty_inode_blocks(index);
     inodes[index].size = 0;
-    inodes[index].type = 0;
+    inodes[index].type = empty_type;
     inodes[index].day = 0;
     inodes[index].month = 0;
     inodes[index].year = 0;
-    inodes[index].link_count = 0;
     inodes[index].link_count = 0;
 }
 
@@ -1240,6 +1243,86 @@ void file_system::del(const string & arg) {
 }
 
 void file_system::fsck() {
+    // getting all free blocks
+    vector<size_t> fblocks;
+    get_all_free_blocks(fblocks,sb.fb_tail);
+    map<size_t,set<string>> nm;
+    // inode and the blocks it occupies
+    map<size_t ,vector<size_t>> blk_map;
+    get_all_occupied_names_blocks(nm,blk_map);
+    nm.clear(); // not going to be used
+    // allocating space for the maps
+    // all blocks
+    vector<size_t> oblocks;
+    for(auto& blk: blk_map)
+        oblocks.insert(oblocks.end(),blk.second.begin(),blk.second.end());
+    // mapping for free and occupied blocks
+    map<size_t,size_t> free_map;
+    for(auto& blk: fblocks)
+        free_map[blk]++;
+    map<size_t,size_t> full_map;
+    for(auto& blk: oblocks)
+        full_map[blk]++;
+    for(auto& blk: fblocks)
+        full_map[blk] = full_map[blk];
+    for(auto& blk: oblocks)
+        free_map[blk] = free_map[blk];
+    // to map occupied inodes first get free inodes
+    map<size_t,size_t> full_inodes,free_inodes;
+    for (size_t i = 0; i < sb.inode_count; ++i) {
+        if(inodes[i].type != empty_type)
+            full_inodes[i]++;
+        full_inodes[i] = full_inodes[i];
+    }
+    vector<size_t> free_inodes_list;
+    get_all_free_inodes_rec(free_inodes_list,sb.inode_tail);
+    for(auto& i: free_inodes_list)
+        free_inodes[i]++;
+    for (size_t i = 0; i < sb.inode_count; ++i)
+        free_inodes[i] = free_inodes[i];
+    size_t newline = 0;
+    cout << "Left digit shows number of free blocks or free inodes association occurs in free list for the given data block,"
+            << endl << "right digit shows occupied blocks or inodes associated." << endl
+            << "Data Blocks "<<"("<< free_map.size() << ")"<< endl;
+    for(auto& blk: free_map){
+        newline++;
+        printf("Data Block %4lu:" GREEN "|%lu%lu|    " RESET,blk.first,blk.second,full_map[blk.first]);
+        if(newline == 5){
+            cout << endl;
+            newline = 0;
+        }
+    }
+    cout << endl;
+    newline = 0;
+    cout << "Inodes " << "(" << free_inodes.size() << ")" << endl;
+    for(auto& i: free_inodes){
+        newline++;
+        printf("Inode %4lu:" GREEN "|%lu%lu|    " RESET,i.first,i.second,full_inodes[i.first]);
+        if(newline == 7){
+            cout << endl;
+            newline = 0;
+        }
+    }
+
+
+}
+
+void file_system::get_all_free_inodes_rec(std::vector<size_t> &res, size_t pos) {
+    if(pos == 0)
+        return;
+    load_by_block_no(pos);
+    data_block& temp = temp_blocks.back();
+    size_t address_count = temp.get_fb_size();
+    if(address_count == 0){
+       throw logic_error("Free inode list is corrupted.");
+    }
+    size_t next = temp.get_address(node_cap);
+    for (size_t i = 0; i < address_count; ++i) {
+        res.push_back(temp.get_address(i));
+    }
+    temp_blocks.pop_back();
+    if(pos != sb.inode_tail)
+        get_all_free_inodes_rec(res,next);
 
 }
 

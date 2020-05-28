@@ -88,6 +88,18 @@ void args_reader::file_oper(int argc, const char **argv) {
         file_system fs(filename);
         fs.hard_link(argv[3],argv[4]);
     }
+    else if (argv[2] == string("lnsym")){
+        if(argc != 5)
+            throw invalid_argument("lnsym needs 2 arguments.");
+        file_system fs(filename);
+        fs.soft_link(argv[3],argv[4]);
+    }
+    else if (argv[2] == string("fsck")){
+        if(argc != 5)
+            throw invalid_argument("No arguments are required with fsck.");
+        file_system fs(filename);
+        fs.fsck();
+    }
     else{
         throw invalid_argument("Unrecognized command.");
     }
