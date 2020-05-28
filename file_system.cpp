@@ -37,13 +37,7 @@ file_system::file_system(size_t block_size, size_t inode_count) {
     size_t inodes_block_count = ceil(((double)inode_size * inode_count) / ((double)block_size_byte));
     size_t inodes_pos_end = sb.inode_pos + inodes_block_count;
 
-    sb.inode_head = inodes_pos_end;
-    size_t free_inodes_block_count = ceil((2 * ((double)inode_count) - 2) / ((double)block_size_byte - 2));
-    sb.inode_tail = sb.inode_head + free_inodes_block_count - 1;
-    if (sb.inode_head > sb.inode_tail)
-        throw length_error("Error calculating the block positions.");
-
-    sb.root_dir_address = sb.inode_tail + 1;
+    sb.root_dir_address = inodes_pos_end;
     size_t total_blocks = (1024) / block_size;
     // After filling inodes
     size_t last_free_block = total_blocks - 2;
@@ -72,7 +66,7 @@ file_system::file_system(size_t block_size, size_t inode_count) {
 
 void file_system::create_file(const char* filename_arg)  {
 
-    /* Initial Layout Order: SB -> INODES -> INODES_LIST -> ROOT_DIR -> FREE BLOCKS -> FREE_BLOCKS_LIST*/
+    /* Initial Layout Order: SB -> INODES  -> ROOT_DIR -> FREE BLOCKS -> FREE_BLOCKS_LIST*/
 
     ofstream file;
     file.open(filename_arg, ios::binary | ios::out);
@@ -86,8 +80,8 @@ void file_system::create_file(const char* filename_arg)  {
         delete[] temp;
     }
     const inode* iarr = inodes.data();
-    size_t inode_blks = sb.inode_head - sb.inode_pos;
-    if (sb.inode_head < sb.inode_pos)
+    size_t inode_blks = sb.root_dir_address - sb.inode_pos;
+    if (sb.root_dir_address < sb.inode_pos)
         throw std::length_error("Couldn't calculate inode_blocks.");
     file.write((char*)iarr, sizeof(inode) * sb.inode_count);
     if (inode_blks * block_size_byte > sizeof(inode) * sb.inode_count) {
@@ -96,10 +90,6 @@ void file_system::create_file(const char* filename_arg)  {
         file.write(temp, remaining);
         delete[] temp;
     }
-    size_t free_inodes_blocks = sb.root_dir_address - sb.inode_head;
-    if (sb.root_dir_address < sb.inode_tail)
-        throw std::length_error("Couldn't calculate free inode blocks.");
-
     // Going to write block by block the free block nodes
     char * zero_chars = new char[block_size_byte];
     for (size_t i = 0; i < block_size_byte;i++) {
@@ -107,21 +97,7 @@ void file_system::create_file(const char* filename_arg)  {
     }
     size_t cap = block_size_byte / 2 - 1;
     uint16_t j = 1;
-    for (size_t i = sb.inode_head; i < free_inodes_blocks + sb.inode_head; ++i) {
-        //filling the block first
-        data_block temp(zero_chars,0,block_size_byte,0);
-        for (size_t k = 0; k < cap; ++k) {
-            if (sb.free_inode_count + 1 > j)
-                temp.push_address(j++);
-            else
-                break;
-        }
-        // if it is not the last loop
-        if (i + 1 < free_inodes_blocks)
-            temp.set_address(node_cap,i+1);
 
-        file.write(temp.arr, block_size_byte);
-    }
     // Root directory data block currently has . and .. dir entries
     data_block temp(zero_chars,0,block_size_byte,sb.root_dir_address);
     init_directory(temp,0,0);
@@ -567,57 +543,24 @@ void file_system::write_inode_blocks_buffer()
 }
 
 uint16_t file_system::get_free_inode() {
-    if(sb.free_inode_count == 0){
-        write_superblock();
-        throw runtime_error("No more inodes left.");
+    size_t i = 0;
+    for (i = 0; i < inodes.size(); ++i) {
+        if(inodes[i].type == empty_type){
+            inodes[i].type = file_type;
+            sb.free_inode_count--;
+            write_inode(i);
+            write_superblock();
+            return i;
+        }
     }
-    size_t  tail_size = sb.free_inode_count*2 % (block_size_byte-2);
-    load_by_block_no(sb.inode_tail,tail_size);
-    data_block& fb = temp_blocks.back();
-    size_t node_size = fb.get_fb_size();
-    if(node_size == 0){
-        temp_blocks.pop_back();
-        size_t temp = sb.inode_tail;
-        sb.inode_tail = fb.get_address(node_cap);
-        // put this node to free blocks
-        put_free_block(temp);
-        // get the new tail
-        load_by_block_no(sb.inode_tail);
-        fb = temp_blocks.back();
-    }
-    // get new inode number
-    uint16_t res = fb.pop_address();
-    write_block(fb);
-    temp_blocks.pop_back();
-    sb.free_inode_count--;
-    write_superblock();
-    return res;
+    throw underflow_error("No empty inode left.");
 }
 
 void file_system::put_free_inode(uint16_t index)
 {
     // get the tail block
-    load_by_block_no(sb.inode_tail);
-    data_block& fb = temp_blocks.back();
-    size_t node_size = fb.get_fb_size();
-    fb.size = node_size*2;
-    if(node_size == node_cap){
-        temp_blocks.pop_back();
-        uint16_t temp = sb.inode_tail;
-        sb.inode_tail = get_free_block();
-        load_by_block_no(sb.inode_tail);
-        fb = temp_blocks.back();
-        fb.set_address(node_cap,temp);
-        fb.push_address(index);
-        write_block(fb);
-    }
-    else{
-        fb.push_address(index);
-        write_block(fb);
-    }
-    temp_blocks.pop_back();
+    inodes[index].type = empty_type;
     sb.free_inode_count++;
-    clear_inode(index);
     write_superblock();
     write_inode(index);
 }
@@ -806,7 +749,7 @@ void file_system::get_all_occupied_names_blocks(map<size_t, set<string>> &name_m
     // listing all occupied inodes
     vector<size_t> all_dirs;
     for (size_t i = 0; i < inodes.size(); ++i) {
-        if (inodes[i].year != 0){
+        if (inodes[i].type != empty_type){
             if(inodes[i].type == file_system::dir_type)
                 all_dirs.push_back(i);
             name_map[i]  = set<string>();
@@ -898,8 +841,7 @@ void file_system::load_occupied_inode_blocks_helper(size_t index, vector<size_t>
     }
 }
 
-void file_system::
-test2(int argc,const char ** argv) {
+void file_system::test2(int argc,const char ** argv) {
     int bs,ic;
     args_reader::mfs(argc,argv,&bs,&ic);
     auto * fs = new file_system(bs,ic);
@@ -908,9 +850,7 @@ test2(int argc,const char ** argv) {
 
     auto * fs2 = new file_system("file.dat");
     cout << "mkdir" << endl;
-    fs2->fsck();
     fs2->mkdir("/f1");
-    fs2->fsck();
     delete fs2;
     for (size_t i = 0; i < 12; ++i) {
         auto * fs3 = new file_system("file.dat");
@@ -1283,18 +1223,16 @@ void file_system::fsck() {
         free_map[blk] = free_map[blk];
     // to map occupied inodes first get free inodes
     map<size_t,size_t> full_inodes,free_inodes;
-    for (size_t i = 0; i < sb.inode_count; ++i) {
-        if(inodes[i].type != empty_type)
-            full_inodes[i]++;
-        full_inodes[i] = full_inodes[i];
-    }
+    rec_inode_lookup(full_inodes);
     vector<size_t> free_inodes_list;
-    get_all_free_inodes_rec(free_inodes_list,sb.inode_tail);
+    size_t dir_count;
+    get_all_free_inodes(free_inodes_list,&dir_count);
     for(auto& i: free_inodes_list)
         free_inodes[i]++;
     for (size_t i = 0; i < sb.inode_count; ++i)
         free_inodes[i] = free_inodes[i];
     size_t newline = 0;
+
     cout << "Left digit shows number of free blocks or free inodes association occurs in free list for the given data block,"
             << endl << "right digit shows occupied blocks or inodes associated." << endl
             << "Data Blocks "<<"("<< free_map.size() << ")"<< endl;
@@ -1318,25 +1256,33 @@ void file_system::fsck() {
         }
     }
     cout << endl;
-
 }
 
-void file_system::get_all_free_inodes_rec(std::vector<size_t> &res, size_t pos) {
-    if(pos == 0)
-        return;
-    load_by_block_no(pos);
-    data_block& temp = temp_blocks.back();
-    size_t address_count = temp.get_fb_size();
-    if(address_count == 0){
-       throw logic_error("Free inode list is corrupted.");
+void file_system::rec_inode_lookup(std::map<size_t,size_t> &full_inodes) {
+    // list all the directories
+    vector<bool> visited(inodes.size(),false);
+    full_inodes[0]++;
+    rec_inode_lookup(full_inodes,0,visited);
+}
+
+void file_system::rec_inode_lookup(std::map<size_t, size_t> &full_inodes, size_t pos, std::vector<bool>& visited) {
+    visited[pos] = true;
+    inode_blocks.clear();
+    load_inode_blocks(inodes[pos]);
+    vector<size_t> dir_inodes;
+    size_t dir_count=0,iindex=0;
+    for(auto& blk: inode_blocks){
+        dir_count = blk.get_dir_entry_count();
+        for (int i = 2; i < dir_count; ++i) {
+            iindex = blk.get_entry_inode_no(i);
+            if(inodes[iindex].type == dir_type && !visited[iindex])
+                dir_inodes.push_back(iindex);
+            full_inodes[iindex]++;
+        }
     }
-    size_t next = temp.get_address(node_cap);
-    for (size_t i = 0; i < address_count; ++i) {
-        res.push_back(temp.get_address(i));
-    }
-    temp_blocks.pop_back();
-    if(pos != sb.inode_tail)
-        get_all_free_inodes_rec(res,next);
+    inode_blocks.clear();
+    for(auto dir_inode: dir_inodes)
+        rec_inode_lookup(full_inodes, dir_inode,visited);
 
 }
 

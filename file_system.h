@@ -83,8 +83,6 @@ struct superblock {
     uint16_t inode_pos;
     uint16_t inode_count;
     uint16_t free_inode_count;
-    uint16_t inode_head;
-    uint16_t inode_tail;
     uint16_t fb_count;
     uint16_t fb_head;
     uint16_t fb_tail;
@@ -135,11 +133,12 @@ private:
     void write_inode(uint16_t ino);
     void write_helper(uint16_t address, uint32_t * pos, uint32_t * size,const char * buf,
                       size_t rel_block,size_t level,size_t off,size_t* wb_size,size_t * buf_pos);
-    // Clears the temp blocks buffer
     void write_inode_blocks_buffer();
+
     void get_all_occupied_names_blocks(std::map<size_t,std::set<std::string>>& name_map,
                                        std::map<size_t,std::vector<size_t>> &blk_map);
-
+    void rec_inode_lookup(std::map<size_t,size_t>& full_inodes);
+    void rec_inode_lookup(std::map<size_t, size_t> &full_inodes, size_t pos, std::vector<bool>& visited);
     //helper for read_file method
     void copy_system_file_to_buf(size_t iinode,char * buf,size_t size);
 
