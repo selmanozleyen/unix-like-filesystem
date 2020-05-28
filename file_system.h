@@ -174,7 +174,6 @@ private:
 
     void get_all_free_blocks(std::vector<size_t>& res,size_t pos);
     void get_all_free_inodes(std::vector<size_t>& res,size_t * dir_count);
-    void get_all_free_inodes_rec(std::vector<size_t>& res,size_t pos);
     void load_occupied_inode_blocks(size_t index, std::vector<size_t> &res);
     void load_occupied_inode_blocks_helper(size_t index, std::vector<size_t> &res, size_t address, size_t level);
 
