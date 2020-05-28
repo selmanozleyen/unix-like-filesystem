@@ -655,6 +655,7 @@ void file_system::put_free_block(uint16_t bno)
     load_by_block_no(sb.fb_tail);
     data_block& fb = temp_blocks.back();
     size_t fb_size = fb.get_fb_size();
+    fb.size = fb_size*2;
     sb.fb_count++;
     // If the tail is full then the
     // block we are trying to put
@@ -883,6 +884,7 @@ void file_system::load_occupied_inode_blocks_helper(size_t index, vector<size_t>
     }
     else{
         load_by_block_no(address);
+        res.push_back(address);
         data_block blk = temp_blocks.back();
         temp_blocks.pop_back();
         for (size_t i = 0; i < block_cap; ++i) {
@@ -901,24 +903,33 @@ test2(int argc,const char ** argv) {
     delete fs;
 
     auto * fs2 = new file_system("file.dat");
+    cout << "mkdir" << endl;
+    fs2->fsck();
     fs2->mkdir("/f1");
+    fs2->fsck();
     delete fs2;
     for (size_t i = 0; i < 12; ++i) {
         auto * fs3 = new file_system("file.dat");
+        cout << "mkdir" << "/f1/"+to_string(i) << endl;
         fs3->mkdir("/f1/"+to_string(i));
+        fs2->fsck();
         delete fs3;
     }
     auto * fs3 = new file_system("file.dat");
+    cout << "write /lol.p Makefile" << endl;
+    fs2->fsck();
     fs3->copy_file("/lol.p","Makefile");
+    fs2->fsck();
     fs3->dumpe2fs();
     fs3->read_file("/lol.p","out.txt");
     fs3->list_folders("/");
     delete fs3;
-
     auto * fs4 = new file_system("file.dat");
+    fs4->fsck();
     fs4->rmdir("/f1/0");
     fs4->rmdir("/f1/1");
     fs4->rmdir("/f1/2");
+    fs4->fsck();
     fs4->list_folders("/f1");
     fs4->dumpe2fs();
     fs4->copy_file("/f1/f2","os_midterm.cbp");
@@ -940,7 +951,6 @@ test2(int argc,const char ** argv) {
     fs4->list_folders("/");
     fs4->del("/l2");
     fs4->list_folders("/");
-    fs4->fsck();
     delete fs4;
 
 }
@@ -1303,7 +1313,7 @@ void file_system::fsck() {
             newline = 0;
         }
     }
-
+    cout << endl;
 
 }
 
@@ -1464,5 +1474,5 @@ data_block::data_block(size_t blk_size) {
 
 string data_block::get_entry_name_from_arr(size_t index, char *arr) {
     string res(arr+8 * index + 2,dir_entry_size);
-    return string(res.data());
+    return string(res.data(),strlen(res.data()));
 }
