@@ -711,10 +711,12 @@ void file_system::list_folders(const std::string &path) {
     }
     size_t i = 0;
     inode * temp = nullptr;
+    const char * tempstr = nullptr;
     for(const auto& line : names){
         temp = &inodes[inode_nos[i]];
+        tempstr = string(line.data(),dir_name_size).append("\0").data();
         printf("%7u %u %s %2u %.2d:%.2d:%.2d %s\n",temp->size,temp->year,
-                months[temp->month],temp->day,temp->hour,temp->min,temp->sec,line.data());
+                months[temp->month],temp->day,temp->hour,temp->min,temp->sec,tempstr);
         i++;
     }
     fflush(stdout);
@@ -747,7 +749,7 @@ void file_system::dumpe2fs()  {
     cout << GREEN "Number Of Directories: " RESET<< dir_count << endl;
     cout << GREEN "Block Size (KB): " RESET<< sb.block_size << endl;
     size_t j = 0;
-    cout << "Free Blocks: " << " (" <<fblocks.size() << "): ";
+    cout << endl <<GREEN "Free Blocks: " RESET << " (" <<fblocks.size() << "): ";
     for(auto i: fblocks){
         cout << i << ", ";
         j++;
@@ -756,8 +758,8 @@ void file_system::dumpe2fs()  {
             j = 0;
         }
     }
-    cout << endl;
-    cout << "Free Inodes:" << " (" <<finodes.size() << "): ";
+    cout << endl << endl;
+    cout <<GREEN "Free Inodes:" RESET << " (" <<finodes.size() << "): ";
     j = 0;
     for(auto i: finodes){
         cout << i << ", ";
@@ -767,7 +769,7 @@ void file_system::dumpe2fs()  {
             j = 0;
         }
     }
-    cout << endl;
+    cout << endl << endl;
     cout << GREEN "Occupied Inodes List: " RESET<< endl;
     for(auto& in : blk_map){
         cout << GREEN"-----------------------------" RESET << endl;
@@ -783,8 +785,10 @@ void file_system::dumpe2fs()  {
             }
         }
         cout << endl << "Occupied Names: ";
+        const char * tempstr = nullptr;
         for(auto &on: nm[in.first]){
-            cout << on << ", ";
+            tempstr = string(on.data(),dir_name_size).append("\0").data();
+            cout << tempstr << ", ";
             j++;
             if(j == 30){
                 cout << endl;
@@ -1022,7 +1026,7 @@ bool file_system::new_file_args(const std::string &arg, std::string &path, std::
 
     path = string(arg, 0, last_slash + 1);
     name = string(arg, last_slash + 1, arg.size() - last_slash);
-    if (name.size() > 6)
+    if (name.size() > dir_name_size)
         throw invalid_argument("File/Directory names should be at most 6 characters.");
     if ((name.find('/') != string::npos) || (name.find(' ') != string::npos))
         throw invalid_argument("File/Directory name is invalid.");
@@ -1081,7 +1085,7 @@ void file_system::copy_system_file_to_buf(size_t iinode, char *buf, size_t size)
     inode_blocks.clear();
     load_inode_blocks(inodes[iinode]);
     for(auto& in: inode_blocks){
-        for (size_t i = 0; i < block_size_byte & size > 0; ++i) {
+        for (size_t i = 0; (i < block_size_byte) & (size > 0); ++i) {
             *buf = in.arr[i];
             ++buf;
             --size;
@@ -1129,7 +1133,7 @@ void file_system::check_file_to_delete(const std::string& arg, std::string &path
 
     path = string(arg, 0, last_slash + 1);
     name = string(arg, last_slash + 1, arg.size() - last_slash);
-    if (name.size() > 6)
+    if (name.size() > dir_name_size)
         throw invalid_argument("File/Directory names should be at most 6 characters.");
     if ((name.find('/') != string::npos) || (name.find(' ') != string::npos))
         throw invalid_argument("File/Directory name is invalid.");
@@ -1151,7 +1155,7 @@ void file_system::remove_dir_entry(size_t iindex, const std::string &name) {
     copy_system_file_to_buf(iindex,buf.data(),fsize);
     size_t dir_count = fsize/(data_block::dir_entry_size);
     size_t done = 0, to_rm_pos = 1;
-    for (int i = 1;i < dir_count && !done; ++i) {
+    for (size_t i = 1;(i < dir_count) && !done; ++i) {
         if(data_block::get_entry_name_from_arr(i,buf.data()) == name){
             done = 1;
             to_rm_pos = i;

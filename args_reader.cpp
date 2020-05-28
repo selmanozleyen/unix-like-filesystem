@@ -95,7 +95,7 @@ void args_reader::file_oper(int argc, const char **argv) {
         fs.soft_link(argv[3],argv[4]);
     }
     else if (argv[2] == string("fsck")){
-        if(argc != 5)
+        if(argc != 3)
             throw invalid_argument("No arguments are required with fsck.");
         file_system fs(filename);
         fs.fsck();

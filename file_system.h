@@ -194,6 +194,7 @@ private:
     static const size_t file_type = 2;
     static const size_t sym_dir = 3;
     static const size_t sym_file = 4;
+    static const size_t dir_name_size = 6;
     // System RAM simulation
     std::vector<inode> inodes;
     std::vector<data_block> inode_blocks;
