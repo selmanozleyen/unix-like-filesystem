@@ -4,7 +4,6 @@
 
 #include <fstream>
 #include "file_system.h"
-#include "args_reader.h"
 #include <ctime>
 #include <cmath>
 #include <cstring>
@@ -25,7 +24,6 @@ const char file_system::months[][4]= {
 
 /* Assumes the parameters are correct */
 file_system::file_system(size_t block_size, size_t inode_count) {
-
     inodes.resize(inode_count);
     sb.inode_count = (uint16_t)inode_count;
     sb.free_inode_count = ((uint16_t)inode_count) - 1;
@@ -853,8 +851,15 @@ void file_system::copy_file(const std::string& path, const char * fname) {
     ifstream file(fname, ios::binary| ios::in | ios::ate);
     file.exceptions(std::ios::failbit | std::ios::badbit);
     auto fsize = file.tellg();
-    size_t block_size_needed = ceil(((double) fsize)/((double) block_size_byte));
-    if(fsize > max_file_size || block_size_needed+3 > sb.fb_count)
+    size_t block_needed = ceil(((double) fsize)/((double) block_size_byte));
+    size_t si_block_needed = 0,di_block_needed = 0,ti_block_needed = 0;
+    if(block_needed > direct_count)
+        si_block_needed = ceil(((double)(block_needed - direct_count))/((double)block_cap));
+    if(si_block_needed > 1)
+        di_block_needed = ceil(((double)(si_block_needed - 1))/((double)block_cap));
+    if(di_block_needed > 1)
+        ti_block_needed = ceil(((double)(di_block_needed - 1))/((double)block_cap));
+    if(fsize > max_file_size || block_needed+si_block_needed+di_block_needed+ti_block_needed> sb.fb_count)
         throw invalid_argument("Given file exceeds the size of the file system disk.");
 
     vector<char> buf(fsize);
