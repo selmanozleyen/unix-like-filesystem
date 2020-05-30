@@ -50,7 +50,7 @@ file_system::file_system(size_t block_size, size_t inode_count) {
     }
     sb.fb_head = total_blocks - 1;
     sb.fb_tail = last_free_block + 1;
-    sb.fb_count = sb.fb_tail - fb_pos;
+    sb.fb_count = total_blocks - fb_pos;
     //fill root dir inode
     if (fb_pos > sb.fb_tail || sb.fb_count < 1)
         throw invalid_argument("I-node count is too big.");
@@ -580,9 +580,13 @@ uint16_t file_system::get_free_block()
 
     sb.fb_count--;
     if (free_blocks == 0) {
-        sb.fb_tail = fb.get_address(node_cap);
-        if(sb.fb_tail == 0)
+        if(sb.fb_tail == sb.fb_head){
+            sb.fb_tail = 0;
             sb.fb_head = 0;
+        }
+        else{
+            sb.fb_tail = fb.get_address(node_cap);
+        }
         res = fb.get_bno();
     }
     else {
@@ -600,6 +604,17 @@ void file_system::put_free_block(uint16_t bno)
 {
     if(bno > KB/sb.block_size)
         throw invalid_argument("Given free block no is invalid.");
+    // if there is no free block make that the new free block list
+    if(sb.fb_count == 0){
+        data_block zeros(block_size_byte);
+        zeros.bno = bno;
+        sb.fb_tail = bno;
+        sb.fb_head = bno;
+        sb.fb_count++;
+        write_block(zeros);
+        write_superblock();
+        return;
+    }
     load_by_block_no(sb.fb_tail);
     data_block& fb = temp_blocks.back();
     size_t fb_size = fb.get_fb_size();
@@ -789,7 +804,6 @@ void file_system::get_all_free_blocks(std::vector<size_t> &res, size_t pos) {
     size_t address_count = temp.get_fb_size();
     if(address_count == 0 && sb.fb_tail == pos){
         if(sb.fb_head == sb.fb_tail){
-            res.push_back(pos);
             temp_blocks.pop_back();
             return;
         }
@@ -851,15 +865,8 @@ void file_system::copy_file(const std::string& path, const char * fname) {
     ifstream file(fname, ios::binary| ios::in | ios::ate);
     file.exceptions(std::ios::failbit | std::ios::badbit);
     auto fsize = file.tellg();
-    size_t block_needed = ceil(((double) fsize)/((double) block_size_byte));
-    size_t si_block_needed = 0,di_block_needed = 0,ti_block_needed = 0;
-    if(block_needed > direct_count)
-        si_block_needed = ceil(((double)(block_needed - direct_count))/((double)block_cap));
-    if(si_block_needed > 1)
-        di_block_needed = ceil(((double)(si_block_needed - 1))/((double)block_cap));
-    if(di_block_needed > 1)
-        ti_block_needed = ceil(((double)(di_block_needed - 1))/((double)block_cap));
-    if(fsize > max_file_size || block_needed+si_block_needed+di_block_needed+ti_block_needed> sb.fb_count)
+
+    if(fsize > max_file_size)
         throw invalid_argument("Given file exceeds the size of the file system disk.");
 
     vector<char> buf(fsize);
@@ -873,6 +880,16 @@ void file_system::copy_file(const std::string& path, const char * fname) {
 void file_system::write_str_to_file(const string &arg, std::vector<char> &buf, bool error_when_exist) {
     string path,name;
     size_t parent;
+    size_t block_needed = ceil(((double) buf.size())/((double) block_size_byte));
+    size_t si_block_needed = 0,di_block_needed = 0,ti_block_needed = 0;
+    if(block_needed > direct_count)
+        si_block_needed = ceil(((double)(block_needed - direct_count))/((double)block_cap));
+    if(si_block_needed > 1)
+        di_block_needed = ceil(((double)(si_block_needed - 1))/((double)block_cap));
+    if(di_block_needed > 1)
+        ti_block_needed = ceil(((double)(di_block_needed - 1))/((double)block_cap));
+    if(block_needed + si_block_needed + di_block_needed + ti_block_needed > sb.fb_count)
+        throw length_error("Given file is too big for the system.");
     // sets these values
     bool file_exists = new_file_args(arg, path, name, parent, error_when_exist);
 
@@ -1070,6 +1087,7 @@ void file_system::remove_dir_entry(size_t iindex, const std::string &name) {
             buf.begin()+to_rm_pos*data_block::dir_entry_size+data_block::dir_entry_size);
     // empties all allocated blocks
     empty_inode_blocks(iindex);
+    write_superblock();
     write(iindex,0,buf.size(),buf.data());
     if(inodes[iindex].size < data_block::dir_entry_size)
         throw logic_error("Inode attributes are corrupted.");
