@@ -1235,7 +1235,7 @@ void file_system::rec_inode_lookup(std::map<size_t, size_t> &full_inodes, size_t
     size_t dir_count=0,iindex=0;
     for(auto& blk: inode_blocks){
         dir_count = blk.get_dir_entry_count();
-        for (int i = 2; i < dir_count; ++i) {
+        for (size_t i = 2; i < dir_count; ++i) {
             iindex = blk.get_entry_inode_no(i);
             if(inodes[iindex].type == dir_type && !visited[iindex])
                 dir_inodes.push_back(iindex);

@@ -24,7 +24,7 @@ void args_reader::mfs(int argc, const char **argv, int * bs, int * ic) {
     double max_i = 0;
     int bs_byte = block_size*(1 << 10);
     max_i+= 32768;
-    max_i-= ((double)block_size)/8;
+    max_i-= ((double)bs_byte)/8;
     max_inode = floor(max_i);
     int cur_inode = stoi(argv[2]);
     if(max_inode < cur_inode)
