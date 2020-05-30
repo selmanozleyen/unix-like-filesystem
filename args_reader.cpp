@@ -23,14 +23,8 @@ void args_reader::mfs(int argc, const char **argv, int * bs, int * ic) {
     int max_inode = 0;
     double max_i = 0;
     int bs_byte = block_size*(1 << 10);
-    max_i+= -2097152;
-    max_i+= (double)1048588*bs_byte;
-    if (1048588*((double)bs_byte) < 0)
-        throw overflow_error("Given numbers are too big when calculating max inode count overflow happened.");
-    max_i+= - 5*bs_byte*bs_byte;
-    if(5*bs_byte*bs_byte < 0)
-        throw overflow_error("Given numbers are too big when calculating max inode count overflow happened.");
-    max_i/= 2*(-32+17*bs_byte);
+    max_i+= 32768;
+    max_i-= ((double)block_size)/8;
     max_inode = floor(max_i);
     int cur_inode = stoi(argv[2]);
     if(max_inode < cur_inode)
@@ -99,6 +93,11 @@ void args_reader::file_oper(int argc, const char **argv) {
             throw invalid_argument("No arguments are required with fsck.");
         file_system fs(filename);
         fs.fsck();
+    }else if (argv[2] == string("del")){
+        if(argc != 4)
+            throw invalid_argument("rmdir only needs one argument.");
+        file_system fs(filename);
+        fs.del(argv[3]);
     }
     else{
         throw invalid_argument("Unrecognized command.");

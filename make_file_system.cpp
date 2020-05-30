@@ -3,9 +3,10 @@
 //
 
 #include <iostream>
+#include <cstring>
 #include "args_reader.h"
 #include "file_system.h"
-
+#pragma pack (1)
 
 using namespace std;
 int main(int argc, const char ** argv){
@@ -16,6 +17,8 @@ int main(int argc, const char ** argv){
         fs.create_file(argv[3]);
     }
     catch (exception& e){
+        if(errno)
+            cerr << "Error: "<< strerror(errno) << endl;
         cerr << e.what() << endl;
     }
 

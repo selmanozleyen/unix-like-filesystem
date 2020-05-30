@@ -15,6 +15,7 @@
 
 #define RESET   "\033[0m"
 #define GREEN   "\033[32m"
+#define KB 1024
 
 class data_block {
 public:
@@ -101,8 +102,6 @@ public:
     void mkdir(const std::string& arg);
     // rmdir
     void rmdir(const std::string& arg);
-    // changes inode blocks and writes them to the given inode before flushing
-    void write(uint16_t inode_index, uint32_t pos, uint32_t size,const char* buf);
     // lists all files in the given directory
     void list_folders(const std::string & path);
     // displays data about the file system
@@ -120,13 +119,13 @@ public:
     // file system check
     void fsck();
 
-
-    static void test2(int argc,const char ** argv);
 private:
     uint16_t get_dir_inode(std::string path);
     uint16_t get_dir_inode_helper(std::string& path,const inode& i);
     void load_inode_blocks(inode i);
     void load_by_block_no(size_t bno, size_t size);
+    // changes inode blocks and writes them to the given inode before flushing
+    void write(uint16_t inode_index, uint32_t pos, uint32_t size,const char* buf);
     void write_str_to_file(const std::string &arg, std::vector<char> &buf, bool error_when_exist);
     void write_block(const data_block& b) const;
     void write_superblock();

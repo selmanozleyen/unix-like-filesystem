@@ -31,14 +31,14 @@ file_system::file_system(size_t block_size, size_t inode_count) {
     sb.free_inode_count = ((uint16_t)inode_count) - 1;
     sb.block_size = block_size;
     sb.inode_pos = 1;
-    block_size_byte = 1024 * block_size;
+    block_size_byte = KB * block_size;
     node_cap = block_size_byte / 2 - 1;
     block_cap = node_cap + 1;
     size_t inodes_block_count = ceil(((double)inode_size * inode_count) / ((double)block_size_byte));
     size_t inodes_pos_end = sb.inode_pos + inodes_block_count;
 
     sb.root_dir_address = inodes_pos_end;
-    size_t total_blocks = (1024) / block_size;
+    size_t total_blocks = (KB) / block_size;
     // After filling inodes
     size_t last_free_block = total_blocks - 2;
     // position of the first free block
@@ -67,7 +67,6 @@ file_system::file_system(size_t block_size, size_t inode_count) {
 void file_system::create_file(const char* filename_arg)  {
 
     /* Initial Layout Order: SB -> INODES  -> ROOT_DIR -> FREE BLOCKS -> FREE_BLOCKS_LIST*/
-
     ofstream file;
     file.open(filename_arg, ios::binary | ios::out);
     file.exceptions ( std::ios::failbit | std::ios::badbit );
@@ -96,7 +95,6 @@ void file_system::create_file(const char* filename_arg)  {
         zero_chars[i] = 0;
     }
     size_t cap = block_size_byte / 2 - 1;
-    uint16_t j = 1;
 
     // Root directory data block currently has . and .. dir entries
     data_block temp(zero_chars,0,block_size_byte,sb.root_dir_address);
@@ -109,7 +107,7 @@ void file_system::create_file(const char* filename_arg)  {
     }
 
     // this is the address for the first free block
-    j = sb.root_dir_address + 1;
+    size_t j = sb.root_dir_address + 1;
     // Now writing the free block nodes
     for (uint16_t i = sb.fb_tail; i <= sb.fb_head; ++i) {
         data_block temp1(zero_chars,0,block_size_byte,0);
@@ -145,10 +143,12 @@ void file_system::init_inode(size_t i) {
 }
 
 std::vector<char> file_system::create_dir_entry(uint16_t index,const std::string& dirname) const {
+    if(dirname.empty())
+        throw invalid_argument("Please enter a valid file/directory name.");
     if (dirname.size() > 6)
-        throw invalid_argument("Directory name cannot be longer than 6 characters.");
+        throw invalid_argument("Directory/File name cannot be longer than 6 characters.");
     if ((dirname.find('/') != string::npos) || (dirname.find(' ') != string::npos))
-        throw invalid_argument("Directory name is invalid.");
+        throw invalid_argument("Directory/File name is invalid.");
     vector<char> res{0,0,0,0,0,0,0,0};
     res[1] = (uint8_t)(index % data_block::one_byte);
     res[0] = (uint8_t)((index >> 8) % data_block::one_byte);
@@ -170,6 +170,7 @@ void file_system::add_inode_size(size_t index, uint32_t size)
 file_system::file_system(const char* filename) {
     this->filename = filename;
     fstream file(filename,ios::binary| ios::out | ios::in);
+    file.exceptions ( std::ios::failbit | std::ios::badbit );
     // reading the superblock
     file.read((char*)&sb, sizeof(sb));
     block_size_byte = (sb.block_size << 10);
@@ -183,8 +184,6 @@ file_system::file_system(const char* filename) {
     for (size_t i = 0; i < sb.inode_count; ++i) {
         inodes.emplace_back(temp_inodes[i]);
     }
-    //file.seekg(43488);
-    //file.read((char *)&temp_inodes[0],32);
 
     delete[] temp_inodes;
     file.close();
@@ -303,9 +302,9 @@ void file_system::write_block(const data_block& b) const
 
 void file_system::write_superblock()
 {
-    ofstream file(filename, ios::binary| ios::out | ios::in);
+    ofstream file(filename, ios::binary | ios::out | ios::in );
     file.exceptions ( std::ios::failbit | std::ios::badbit );
-    file.write((char *)&sb, block_size_byte);
+    file.write((char *)&sb, sizeof(sb));
     file.close();
 }
 
@@ -440,6 +439,9 @@ void file_system::write(uint16_t inode_index, uint32_t pos, uint32_t size,const 
     if(cur_block == direct_count){
         if(in.si == 0){
             in.si = get_free_block();
+            data_block zeros(block_size_byte);
+            zeros.bno = in.si;
+            write_block(zeros);
         }
         size_t rel_block = ((pos - off) >> (10 + sb.block_size)) % block_size_byte;
         write_helper(in.si,&pos,&size,buf,rel_block,1,off,&wb_size,&buf_pos);
@@ -546,8 +548,9 @@ uint16_t file_system::get_free_inode() {
     size_t i = 0;
     for (i = 0; i < inodes.size(); ++i) {
         if(inodes[i].type == empty_type){
-            inodes[i].type = file_type;
             sb.free_inode_count--;
+            init_inode(i);
+            inodes[i].type = file_type;
             write_inode(i);
             write_superblock();
             return i;
@@ -590,11 +593,15 @@ uint16_t file_system::get_free_block()
     }
     temp_blocks.pop_back();
     write_superblock();
+    if(res > KB/sb.block_size)
+        throw logic_error("Error returning a free block no.");
     return res;
 }
 
 void file_system::put_free_block(uint16_t bno)
 {
+    if(bno > KB/sb.block_size)
+        throw invalid_argument("Given free block no is invalid.");
     load_by_block_no(sb.fb_tail);
     data_block& fb = temp_blocks.back();
     size_t fb_size = fb.get_fb_size();
@@ -668,7 +675,7 @@ void file_system::list_folders(const std::string &path) {
 
 void file_system::dumpe2fs()  {
     // block count
-    size_t block_count =  1024/sb.block_size;
+    size_t block_count =  KB/sb.block_size;
     // inode count sb.inode_count
     // fb count sb.free_blocks
     // sb.block size
@@ -778,6 +785,7 @@ void file_system::get_all_occupied_names_blocks(map<size_t, set<string>> &name_m
 void file_system::get_all_free_blocks(std::vector<size_t> &res, size_t pos) {
     if(pos == 0)
         return;
+    res.push_back(pos);
     load_by_block_no(pos);
     data_block& temp = temp_blocks.back();
     size_t address_count = temp.get_fb_size();
@@ -841,70 +849,14 @@ void file_system::load_occupied_inode_blocks_helper(size_t index, vector<size_t>
     }
 }
 
-void file_system::test2(int argc,const char ** argv) {
-    int bs,ic;
-    args_reader::mfs(argc,argv,&bs,&ic);
-    auto * fs = new file_system(bs,ic);
-    fs->create_file(argv[3]);
-    delete fs;
-
-    auto * fs2 = new file_system("file.dat");
-    cout << "mkdir" << endl;
-    fs2->mkdir("/f1");
-    delete fs2;
-    for (size_t i = 0; i < 12; ++i) {
-        auto * fs3 = new file_system("file.dat");
-        cout << "mkdir" << "/f1/"+to_string(i) << endl;
-        fs3->mkdir("/f1/"+to_string(i));
-        fs2->fsck();
-        delete fs3;
-    }
-    auto * fs3 = new file_system("file.dat");
-    cout << "write /lol.p Makefile" << endl;
-    fs2->fsck();
-    fs3->copy_file("/lol.p","Makefile");
-    fs2->fsck();
-    fs3->dumpe2fs();
-    fs3->read_file("/lol.p","out.txt");
-    fs3->list_folders("/");
-    delete fs3;
-    auto * fs4 = new file_system("file.dat");
-    fs4->fsck();
-    fs4->rmdir("/f1/0");
-    fs4->rmdir("/f1/1");
-    fs4->rmdir("/f1/2");
-    fs4->fsck();
-    fs4->list_folders("/f1");
-    fs4->dumpe2fs();
-    fs4->copy_file("/f1/f2","os_midterm.cbp");
-    fs4->dumpe2fs();
-    fs4->hard_link("/f1/f2","/f1/l1");
-    fs4->dumpe2fs();
-    fs4->copy_file("/f1/l1","CMakeCache.txt");
-    fs4->list_folders("/f1");
-    fs4->soft_link("/f1/l1","/l2");
-    fs4->copy_file("/l2","in2.txt");
-    fs4->dumpe2fs();
-    fs4->list_folders("/");
-    fs4->del("/f1/l1");
-    fs4->dumpe2fs();
-    fs4->list_folders("/f1");
-    fs4->del("/f1/f2");
-    fs4->dumpe2fs();
-    fs4->list_folders("/f1");
-    fs4->list_folders("/");
-    fs4->del("/l2");
-    fs4->list_folders("/");
-    delete fs4;
-
-}
-
 void file_system::copy_file(const std::string& path, const char * fname) {
     ifstream file(fname, ios::binary| ios::in | ios::ate);
     file.exceptions(std::ios::failbit | std::ios::badbit);
     auto fsize = file.tellg();
-    if(fsize > max_file_size)
+    size_t block_size_needed = ceil(((double) fsize)/((double) block_size_byte));
+    if(fsize > max_file_size || block_size_needed+3 > sb.fb_count)
         throw invalid_argument("Given file exceeds the size of the file system disk.");
+
     vector<char> buf(fsize);
     file.seekg(0);
     file.read(buf.data(),fsize);
@@ -933,9 +885,8 @@ void file_system::write_str_to_file(const string &arg, std::vector<char> &buf, b
         set_inode_time(to_write);
         // update child size
         empty_inode_blocks(to_write);
-        inodes[to_write].size = 0;
-        write(to_write,0,buf.size(),buf.data());
         inodes[to_write].size = buf.size();
+        write(to_write,0,buf.size(),buf.data());
         write_inode(parent);
         write_inode(to_write);
     }
@@ -966,6 +917,8 @@ bool file_system::new_file_args(const std::string &arg, std::string &path, std::
 
     path = string(arg, 0, last_slash + 1);
     name = string(arg, last_slash + 1, arg.size() - last_slash);
+    if(name.empty())
+        throw invalid_argument("Please enter a valid file/directory name.");
     if (name.size() > dir_name_size)
         throw invalid_argument("File/Directory names should be at most 6 characters.");
     if ((name.find('/') != string::npos) || (name.find(' ') != string::npos))
@@ -1012,6 +965,11 @@ void file_system::init_file(uint16_t index, size_t fsize) {
 
 void file_system::read_file(std::string path, const char *fname) {
     size_t file_inode = get_dir_inode(std::move(path));
+    if(inodes[file_inode].type == sym_file){
+        vector<char>buf(inodes[file_inode].size);
+        copy_system_file_to_buf(file_inode,buf.data(),buf.size());
+        file_inode = get_dir_inode(buf.data());
+    }
     size_t file_size = inodes[file_inode].size;
     vector<char> buf(file_size);
     copy_system_file_to_buf(file_inode,buf.data(),file_size);
@@ -1150,7 +1108,6 @@ void file_system::hard_link(const std::string& src, const std::string& dest) {
     add_inode_size(link_parent,data_block::dir_entry_size);
     set_inode_time(link_parent);
     // updating src inode
-    // todo: might check the link count)
     inodes[src_index].link_count++;
     // writing the changes to the disk
     write_inode(src_index);
@@ -1338,9 +1295,8 @@ size_t data_block::get_address(size_t index) const{
     if (index * 2 + 2 > cap)
         throw range_error("Address entry index is invalid.");
     size_t res = 0;
-    res = (unsigned char)arr[index * 2 + 1];
-    res += ((uint16_t)arr[index * 2] << 8);
-
+    res = (size_t)((unsigned char)arr[index * 2 + 1]);
+    res += (((size_t)((unsigned char) arr[index * 2]))<< 8);
     return res;
 }
 
@@ -1373,7 +1329,6 @@ size_t data_block::get_dir_entry_count() const{
 }
 
 void data_block::push_address(size_t address) {
-    // TODO use constant
     size = size + 2;
     if (size > cap) {
         throw std::invalid_argument("Capacity of block node is full.");
@@ -1388,8 +1343,9 @@ size_t data_block::pop_address() {
     }
     size = size - 2;
     size_t res = 0;
-    res = (uint8_t)arr[size+1];
-    res += (((uint16_t)arr[size]) << 8);
+    res = (size_t) (unsigned char)arr[size+1];
+    res += (((size_t) (unsigned char)arr[size]) << 8);
+
     arr[size] = 0;
     arr[size+1] = 0;
     return res;
