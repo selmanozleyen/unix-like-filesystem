@@ -1,7 +1,7 @@
 # os-unix-like-file-system
 
 ## Design
-A file system similar to unix file systems that uses i-nodes blocks and data blocks to keep the files. The file system uses, an i-node
+A unix-like file system that uses i-nodes blocks and data blocks to keep the files. I-node
 structure like the *Figure 1* below (single link, double link and triple link i-nodes).
 
 
