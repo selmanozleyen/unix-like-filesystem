@@ -94,3 +94,14 @@ fileSystemOper fileSystem.data lnsym “/usr/ysa/file1” “/usr/ysa/file2”
 ```
 Linux ln-s command
 
+## Build & Test
+Test case trying to fill the data blocks   
+```
+bash test1.sh
+```
+Test case to delete the only created file.  
+```
+bash test2.sh
+```  
+
+Outputs contain many information about the layout after the operations issued which helps to get an understanding of the linux file system.
