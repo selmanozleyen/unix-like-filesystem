@@ -1,1 +1,0 @@
-/usr/bin/c++     CMakeFiles/fileSystemOper.dir/file_system_oper.cpp.o CMakeFiles/fileSystemOper.dir/args_reader.cpp.o CMakeFiles/fileSystemOper.dir/file_system.cpp.o  -o fileSystemOper 

@@ -1,1 +1,0 @@
-/usr/bin/c++     CMakeFiles/test1.dir/main.cpp.o CMakeFiles/test1.dir/args_reader.cpp.o CMakeFiles/test1.dir/file_system.cpp.o  -o test1 

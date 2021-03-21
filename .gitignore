@@ -1,2 +1,8 @@
 # Project exclude paths
 /cmake-build-debug/
+mySystem.dat
+makeFileSystem
+linuxFile.data
+linuxFile2.data
+cmake_install.cmake
+CMakeLists.txt

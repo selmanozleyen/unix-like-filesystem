@@ -79,6 +79,7 @@ struct inode {
 };
 
 struct superblock {
+    superblock() = default;
     uint16_t block_size;
     uint16_t root_dir_address;
     uint16_t inode_pos;
@@ -177,7 +178,7 @@ private:
     void load_occupied_inode_blocks_helper(size_t index, std::vector<size_t> &res, size_t address, size_t level);
 
     const char* filename = nullptr;
-    superblock sb{};
+    superblock sb;
     size_t block_size_byte;
     size_t node_cap;
     size_t block_cap;

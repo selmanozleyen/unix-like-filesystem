@@ -1,5 +1,0 @@
-/home/selman/cse312/midterm_final/unix-file-system-simulation/CMakeFiles/rebuild_cache.dir
-/home/selman/cse312/midterm_final/unix-file-system-simulation/CMakeFiles/edit_cache.dir
-/home/selman/cse312/midterm_final/unix-file-system-simulation/CMakeFiles/makeFileSystem.dir
-/home/selman/cse312/midterm_final/unix-file-system-simulation/CMakeFiles/test1.dir
-/home/selman/cse312/midterm_final/unix-file-system-simulation/CMakeFiles/fileSystemOper.dir
